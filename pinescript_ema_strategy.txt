@@ -1,0 +1,165 @@
+//@version=5
+strategy(title="ema", shorttitle="ema", overlay=true)
+TF1 = input.timeframe(title='Timeframe', defval='05')
+//, timeframe="", timeframe_gaps=true)
+len = input.int(101, minval=1, title="code")
+src = close//input(close, title="Source")
+offset = 0//input.int(title="Offset", defval=0, minval=-500, maxval=500)
+out = ta.ema(src, len)
+emas = request.security(syminfo.ticker, TF1, out, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
+
+//plot(emas, title="EMA", color=color.green, offset=offset,linewidth = 2)
+buy1 = ta.crossover(close,emas)
+sell1 = ta.crossunder(close,emas)
+
+
+buffer = 0/100//input(0.00)/100
+ 
+long_last1 = false
+short_last1 = false
+ 
+long_last1 := nz(long_last1[1])
+short_last1 := nz(short_last1[1])
+ 
+ 
+
+ 
+long1 = false
+long1 := nz(long1[1])
+ 
+short1 = false
+short1 := nz(short1[1])
+ 
+long_wait1 = false
+long_wait1 := nz(long_wait1[1])
+ 
+short_wait1 = false
+short_wait1 := nz(short_wait1[1])
+ 
+low_forming = sell1 //and not short_last1
+high_forming = buy1 //and not long_last1
+ 
+entry_p = 0.0
+entry_p := nz(entry_p[1])
+ 
+if(low_forming)
+    entry_p := low*(1-buffer)
+    short_wait1 := true
+    long_wait1 := false
+ 
+if(high_forming)
+    entry_p := high*(1+buffer)
+    long_wait1 := true
+    short_wait1 := false
+
+
+
+ 
+buy = long_wait1 and ta.crossover(close , entry_p)
+sell = short_wait1 and ta.crossunder(close , entry_p)
+if(buy)
+    long1 := true
+    long_wait1 := false
+    short1 := false
+    long_last1 := true
+    short_last1 := false
+ 
+if(sell)
+    short1 := true
+    short_wait1 := false
+    long1 := false
+    long_last1 := false
+    short_last1 := true
+ 
+//plot(long_wait1 ? entry_p : na , color = color.green , linewidth = 2 , style = plot.style_linebr)
+//plot(short_wait1 ? entry_p : na , color = color.red , linewidth = 2 , style = plot.style_linebr)
+
+
+Stop = input(0.003, title='StopLoss')
+
+ProfitPerc = input(defval=0.003, title='Profit')
+
+
+long_short = 0
+long_last = buy and (nz(long_short[1]) == 0 or nz(long_short[1]) == -1)
+short_last = sell and (nz(long_short[1]) == 0 or nz(long_short[1]) == 1)
+long_short := long_last ? 1 : short_last ? -1 : long_short[1]
+
+long_entered = false
+long_entered := long_entered[1]
+
+short_entered = false
+short_entered := short_entered[1]
+
+
+longPrice = ta.valuewhen(buy and not long_entered, close, 0)+buffer
+shortPrice = ta.valuewhen(sell and not short_entered, close, 0)-buffer
+
+
+longStop = longPrice - Stop
+shortStop = shortPrice + Stop
+longTake = longPrice + ProfitPerc
+shortTake = shortPrice - ProfitPerc
+
+
+plot(long_short == 1 ? longStop : na, style=plot.style_cross, color=color.new(color.red, 0), linewidth=1, title='Long Fixed SL')
+plot(long_short == -1 ? shortStop : na, style=plot.style_cross, color=color.new(color.red, 0), linewidth=1, title='Short Fixed SL')
+plot(long_short == 1 ? longTake : na, style=plot.style_cross, color=color.new(color.navy, 0), linewidth=1, title='Long Fixed TP')
+
+
+plot(long_short == -1 ? shortTake : na, style=plot.style_cross, color=color.new(color.navy, 0), linewidth=1, title='Short Fixed TP')
+
+
+
+longBar1 = ta.barssince(long_last)
+longBar2 = longBar1 >= 1 ? true : false
+shortBar1 = ta.barssince(short_last)
+shortBar2 = shortBar1 >= 1 ? true : false
+
+longSLhit = long_short == 1 and longBar2 and low < longStop
+
+// if long_entered and not sec
+//     longSLhit := true
+//     longSLhit
+
+// if long_entered and (DIPlus - DIMinus) > _close
+//     longSLhit := true
+//     longSLhit
+
+plotshape(longSLhit and not(sell and not short_entered and long_entered), style=shape.labelup, location=location.belowbar, color=color.new(color.gray, 0), size=size.tiny, title='Stop Loss', text='Long SL', textcolor=color.new(color.white, 0),display = display.none)
+shortSLhit = long_short == -1 and shortBar2 and high > shortStop
+
+
+// if short_entered and not sec
+//     shortSLhit := true
+//     shortSLhit
+
+// if short_entered and (DIMinus - DIPlus) > _close
+//     shortSLhit := true
+//     shortSLhit
+plotshape(shortSLhit and not(buy and not long_entered and short_entered), style=shape.labeldown, location=location.abovebar, color=color.new(color.gray, 0), size=size.tiny, title='Stop Loss', text='Short SL', textcolor=color.new(color.white, 0),display =display.none)
+
+
+longTPhit = long_short == 1 and longBar2 and high > longTake
+plotshape(longTPhit, style=shape.labeldown, location=location.abovebar, color=color.new(color.navy, 0), size=size.tiny, title='Target', text='Long TP', textcolor=color.new(color.white, 0),display =display.none)
+shortTPhit = long_short == -1 and shortBar2 and low < shortTake
+plotshape(shortTPhit, style=shape.labelup, location=location.belowbar, color=color.new(color.navy, 0), size=size.tiny, title='Target', text='Short TP', textcolor=color.new(color.white, 0),display =display.none)
+
+long_short := (long_short == 1 or long_short == 0) and longBar2 and (longSLhit or longTPhit) ? 0 : (long_short == -1 or long_short == 0) and shortBar2 and (shortSLhit or shortTPhit) ? 0 : long_short
+
+
+buy_message = "SYMBOL "+syminfo.basecurrency+" Buy price "+str.tostring(close)+"  tgt =  "+str.tostring(close+ProfitPerc)+"  SL =  " +str.tostring(close-Stop)
+sell_message = "SYMBOL "+syminfo.basecurrency+" Sell price "+str.tostring(close)+"  tgt =  "+str.tostring(close-ProfitPerc)+"  SL =  " +str.tostring(close+Stop)
+// plotshape(buy and not long_entered, color=color.new(color.green, 0), style=shape.labelup, text='Buy', textcolor=color.new(color.white, 0), location=location.belowbar)
+// plotshape(sell and not short_entered, color=color.new(color.red, 0), style=shape.labeldown, text='Sell', textcolor=color.new(color.white, 0), location=location.abovebar)
+
+qn = 1
+
+if buy
+    strategy.entry('buy', strategy.long,qty = qn , comment = "Buy price "+str.tostring(close)+"  tgt =  "+str.tostring(close+ProfitPerc)+"  SL =  " +str.tostring(close-Stop),alert_message = buy_message)
+    //strategy.exit('exit', 'buy', limit=strategy.position_avg_price +ProfitPerc, stop=strategy.position_avg_price-Stop)
+
+
+if sell
+    strategy.entry('sell', strategy.short, qty = qn, comment = "Sell price "+str.tostring(close)+"  tgt =  "+str.tostring(close-ProfitPerc)+"  SL =  " +str.tostring(close+Stop),alert_message = sell_message)
+    //strategy.exit('exit', 'sell', limit=strategy.position_avg_price -ProfitPerc, stop=strategy.position_avg_price+Stop)
